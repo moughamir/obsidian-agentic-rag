@@ -10,7 +10,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
-import yaml
+
+try:
+    import yaml
+
+    YAML_AVAILABLE = True
+except Exception:  # pragma: no cover - optional dependency
+    yaml = None  # type: ignore
+    YAML_AVAILABLE = False
 
 from src.infrastructure.mcp_interface import IObsidianMCP, MCPDocument, MCPSearchQuery
 
@@ -119,10 +126,16 @@ class ObsidianMCPClient(IObsidianMCP):
             end_idx = content.find("---", 3)
             if end_idx == -1:
                 return {}
-            
+
             yaml_content = content[3:end_idx].strip()
+
+            if not YAML_AVAILABLE:
+                # PyYAML not available; cannot parse YAML frontmatter reliably.
+                # Return empty dict rather than raising an import error.
+                return {}
+
             return yaml.safe_load(yaml_content) or {}
-        except (yaml.YAMLError, IndexError):
+        except Exception:
             return {}
 
     async def get_tags(self, path: str) -> List[str]:
@@ -226,8 +239,13 @@ class LocalObsidianReader(IObsidianMCP):
                 return {}
 
             yaml_content = content[3:end_idx].strip()
+
+            if not YAML_AVAILABLE:
+                # PyYAML not installed; return empty frontmatter to avoid dependency failure.
+                return {}
+
             return yaml.safe_load(yaml_content) or {}
-        except (yaml.YAMLError, IndexError):
+        except Exception:
             return {}
 
     async def get_tags(self, path: str) -> List[str]:

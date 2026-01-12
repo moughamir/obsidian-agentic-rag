@@ -11,7 +11,24 @@ Combines:
 from dataclasses import dataclass
 from typing import Any, List, Optional
 
-import numpy as np
+# Optional numpy import. Provide a minimal fallback for environments where numpy
+# is not installed (e.g., CI or lightweight dev environments). The code uses
+# only `np.argsort(...)`, so the fallback implements that.
+try:
+    import numpy as np  # type: ignore
+
+    NP_AVAILABLE = True
+except Exception:  # pragma: no cover - light fallback when numpy is absent
+    NP_AVAILABLE = False
+
+    class _NumpyFallback:
+        @staticmethod
+        def argsort(arr):
+            # Return indices that would sort arr ascending.
+            # Accepts sequences (lists, tuples, etc.) of comparable items.
+            return sorted(range(len(arr)), key=lambda i: arr[i])
+
+    np = _NumpyFallback()
 
 from src.infrastructure.mcp_interface import IVectorMCP, MCPDocument
 
