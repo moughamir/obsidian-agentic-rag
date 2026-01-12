@@ -14,6 +14,7 @@ Usage:
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -22,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.agents.rag_agent import RAGAgentFactory
 from src.application.orchestrator import AgentOrchestrator
-from src.application.rag_pipeline import RAGConfig, RAGPipelineFactory
+from src.application.rag_pipeline import RAGPipelineFactory
 from src.domain.agent_interface import AgentTask
 from src.infrastructure.llm_client import MockLLMClient, OllamaClient
 from src.infrastructure.prompt_manager import FilePromptLoader
@@ -51,8 +52,10 @@ async def setup_rag_system(vault_path: str, use_real_llm: bool = False):
     # 2. Initialize LLM Client
     print("\n2️⃣  Initializing LLM Client...")
     if use_real_llm:
-        llm_client = OllamaClient(model="llama3.1:8b")
-        print("   ✓ Using Ollama (llama3.1:8b)")
+        # Prefer configuring model via environment variable; Ollama client reads LLM_MODEL
+        os.environ.setdefault("LLM_MODEL", "llama3.1:8b")
+        llm_client = OllamaClient()
+        print("   ✓ Using Ollama (model via LLM_MODEL env var)")
     else:
         llm_client = MockLLMClient()
         print("   ✓ Using Mock LLM (for testing)")

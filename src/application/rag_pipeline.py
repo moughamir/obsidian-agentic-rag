@@ -59,12 +59,12 @@ class RAGPipeline:
         self,
         obsidian_client: IObsidianMCP,
         vector_client: IVectorMCP,
-        config: RAGConfig = None,
+        config: Optional[RAGConfig] = None,
     ):
         self.obsidian = obsidian_client
         self.vector = vector_client
         self.graph = GraphNavigator(obsidian_client)
-        self.config = config or RAGConfig()
+        self.config: RAGConfig = config or RAGConfig()
 
         # Initialize RT scheduling if enabled
         if self.config.use_rt_scheduling and RTScheduler.is_rt_available():

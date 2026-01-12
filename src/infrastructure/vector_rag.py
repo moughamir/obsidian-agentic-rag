@@ -9,9 +9,26 @@ Combines:
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, List, Optional
 
-import numpy as np
+# Optional numpy import. Provide a minimal fallback for environments where numpy
+# is not installed (e.g., CI or lightweight dev environments). The code uses
+# only `np.argsort(...)`, so the fallback implements that.
+try:
+    import numpy as np  # type: ignore
+
+    NP_AVAILABLE = True
+except Exception:  # pragma: no cover - light fallback when numpy is absent
+    NP_AVAILABLE = False
+
+    class _NumpyFallback:
+        @staticmethod
+        def argsort(arr):
+            # Return indices that would sort arr ascending.
+            # Accepts sequences (lists, tuples, etc.) of comparable items.
+            return sorted(range(len(arr)), key=lambda i: arr[i])
+
+    np = _NumpyFallback()
 
 from src.infrastructure.mcp_interface import IVectorMCP, MCPDocument
 
@@ -64,7 +81,7 @@ class VectorRAG(IVectorMCP):
 
     def __init__(
         self,
-        config: EmbeddingConfig = None,
+        config: Optional[EmbeddingConfig] = None,
         persist_directory: str = "./data/vector_db",
     ):
         if not SENTENCE_TRANSFORMERS_AVAILABLE:
@@ -76,7 +93,13 @@ class VectorRAG(IVectorMCP):
         if not CHROMADB_AVAILABLE:
             raise ImportError("chromadb required. Install: pip install chromadb")
 
-        self.config = config or EmbeddingConfig()
+        # Normalize config and pre-declare attributes for static typing
+        self.config: EmbeddingConfig = config or EmbeddingConfig()
+
+        # Attributes that depend on optional third-party packages
+        self.embedder: Any = None
+        self.client: Any = None
+        self.collection: Any = None
 
         # Load embedding model
         self.embedder = SentenceTransformer(
@@ -95,9 +118,9 @@ class VectorRAG(IVectorMCP):
         )
 
         # BM25 for keyword search
-        self._bm25 = None
-        self._documents = []
-        self._doc_ids = []
+        self._bm25: Any = None
+        self._documents: List[str] = []
+        self._doc_ids: List[str] = []
 
         # Immediately build BM25 index from existing documents in ChromaDB
         self._rebuild_bm25_from_chroma()
@@ -267,7 +290,10 @@ class VectorRAG(IVectorMCP):
         """
         try:
             reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-        except (OSError, ValueError):  # Catch common model loading errors (e.g., model not found, network issues)
+        except (
+            OSError,
+            ValueError,
+        ):  # Catch common model loading errors (e.g., model not found, network issues)
             # Fallback: return original ranking
             return candidates[:top_k]
 

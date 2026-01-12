@@ -130,3 +130,10 @@ class IVectorMCP(ABC):
     async def add_documents(self, documents: List[MCPDocument]) -> None:
         """Add/update documents in vector store"""
         pass
+
+    @abstractmethod
+    async def rerank(
+        self, query: str, candidates: List[MCPDocument], top_k: int = 3
+    ) -> List[MCPDocument]:
+        """Rerank candidate documents (e.g., using a cross-encoder model)."""
+        pass
