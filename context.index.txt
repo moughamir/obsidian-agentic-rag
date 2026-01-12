@@ -1,0 +1,593 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+The content has been processed where comments have been removed, empty lines have been removed, content has been compressed (code blocks are separated by ⋮---- delimiter), security check has been disabled.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Code comments have been removed from supported file types
+- Empty lines have been removed from all files
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Security check has been disabled - content may contain sensitive information
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+
+================================================================
+Directory Structure
+================================================================
+examples/
+  __init__.py
+  example_usage.py
+prompts/
+  critic.txt
+  researcher.txt
+  specialist.txt
+  synthesizer.txt
+src/
+  agents/
+    __init__.py
+    agent_factory.py
+    concrete_agent.py
+  application/
+    __init__.py
+    orchestrator.py
+  domain/
+    __init__.py
+    agent_interface.py
+  infrastructure/
+    __init__.py
+    llm_client.py
+    prompt_manager.py
+  __init__.py
+tests/
+  __init__.py
+  test_basic.py
+.gitignore
+pyproject.toml
+README.md
+requirements.txt
+setup_project.py
+setup.py
+
+================================================================
+Files
+================================================================
+
+================
+File: examples/__init__.py
+================
+
+
+================
+File: examples/example_usage.py
+================
+async def example_single_agent()
+⋮----
+factory = AgentFactory(use_mocks=True)
+researcher = factory.create_researcher(name="KnowledgeSeeker")
+task = AgentTask(
+response = await researcher.process(task)
+⋮----
+async def example_multi_agent_sequence()
+⋮----
+"""
+    Example 2: Multi-Agent Sequential Pipeline
+    Shows orchestration with dependency between agents
+    """
+⋮----
+orchestrator = AgentOrchestrator()
+researcher = factory.create_researcher("Researcher")
+synthesizer = factory.create_synthesizer("Synthesizer")
+critic = factory.create_critic("Critic")
+⋮----
+# Execute pipeline
+⋮----
+results = await orchestrator.execute_sequence(
+⋮----
+async def example_parallel_execution()
+⋮----
+"""
+    Example 3: Parallel Agent Execution
+    Multiple agents work independently
+    """
+⋮----
+python_expert = factory.create_custom("PythonExpert", "specialist", 0.5)
+rust_expert = factory.create_custom("RustExpert", "specialist", 0.5)
+go_expert = factory.create_custom("GoExpert", "specialist", 0.5)
+⋮----
+results = await orchestrator.execute_parallel(
+⋮----
+async def main()
+⋮----
+"""Run all examples"""
+
+================
+File: prompts/critic.txt
+================
+You are a Critical Analysis Agent.
+
+Your responsibilities:
+- Validate claims against evidence
+- Identify logical issues and fallacies
+- Check for biases and assumptions
+- Assess confidence levels
+
+Be constructive but rigorous in your analysis.
+
+================
+File: prompts/researcher.txt
+================
+You are a Research Agent specialized in information retrieval.
+
+Your responsibilities:
+- Search thoroughly and accurately
+- Cite sources and references
+- Identify knowledge gaps
+- Provide comprehensive findings
+
+Always be precise and thorough in your research.
+
+================
+File: prompts/specialist.txt
+================
+You are a Specialist Agent with deep domain expertise.
+
+Your responsibilities:
+- Provide expert-level insights
+- Apply domain-specific knowledge
+- Identify nuanced patterns
+- Offer professional recommendations
+
+Leverage your expertise to provide high-quality analysis.
+
+================
+File: prompts/synthesizer.txt
+================
+You are a Synthesis Agent specialized in combining information.
+
+Your responsibilities:
+- Integrate information from multiple sources
+- Identify patterns and connections
+- Resolve contradictions intelligently
+- Create coherent narratives
+
+Focus on clarity and coherence in your synthesis.
+
+================
+File: src/agents/__init__.py
+================
+
+
+================
+File: src/agents/agent_factory.py
+================
+class AgentFactory
+⋮----
+def create_researcher(self, name: str = "Researcher") -> IAgent
+⋮----
+config = AgentConfig(name=name, role="researcher", temperature=0.4)
+⋮----
+def create_synthesizer(self, name: str = "Synthesizer") -> IAgent
+⋮----
+config = AgentConfig(name=name, role="synthesizer", temperature=0.6)
+⋮----
+def create_critic(self, name: str = "Critic") -> IAgent
+⋮----
+config = AgentConfig(name=name, role="critic", temperature=0.2)
+⋮----
+def create_custom(self, name: str, role: str, temperature: float = 0.7) -> IAgent
+⋮----
+config = AgentConfig(name=name, role=role, temperature=temperature)
+⋮----
+def _create_agent(self, config: AgentConfig) -> IAgent
+
+================
+File: src/agents/concrete_agent.py
+================
+@dataclass
+class AgentConfig
+⋮----
+name: str
+role: str
+temperature: float = 0.7
+model: str = "llama3.1:8b"
+class BaseAgent(IAgent)
+⋮----
+@property
+    def name(self) -> str
+⋮----
+@property
+    def role(self) -> str
+async def process(self, task: AgentTask) -> AgentResponse
+⋮----
+prompt = self._build_prompt(task)
+response_text = await self._llm.generate(prompt, self._config.temperature)
+⋮----
+def _build_prompt(self, task: AgentTask) -> str
+⋮----
+previous = self._format_previous_results(task.previous_results)
+⋮----
+def _format_previous_results(self, results: list[AgentResponse]) -> str
+⋮----
+formatted = []
+
+================
+File: src/application/__init__.py
+================
+
+
+================
+File: src/application/orchestrator.py
+================
+class AgentOrchestrator
+⋮----
+def __init__(self)
+def register(self, agent: IAgent) -> None
+def get_agent(self, name: str) -> IAgent
+⋮----
+"""
+        Execute agents in sequence
+        KISS: Simple for-loop, each agent sees previous results
+        Args:
+            agent_names: Ordered list of agent names
+            task_instruction: The task to perform
+            context: Optional context/background
+        Returns:
+            List of all agent responses
+        """
+results: list[AgentResponse] = []
+⋮----
+agent = self.get_agent(agent_name)
+# Create task with previous results as context
+task = AgentTask(
+# Execute agent
+response = await agent.process(task)
+⋮----
+"""
+        Execute agents in parallel (for independent tasks)
+        Use when agents don't need each other's results
+        """
+⋮----
+tasks = []
+⋮----
+task = AgentTask(instruction=task_instruction, context=context)
+⋮----
+def list_agents(self) -> list[str]
+⋮----
+"""List all registered agents"""
+
+================
+File: src/domain/__init__.py
+================
+
+
+================
+File: src/domain/agent_interface.py
+================
+@dataclass
+class AgentResponse
+⋮----
+content: str
+confidence: float
+agent_name: str
+sources: list[str] | None = None
+def __post_init__(self)
+⋮----
+@dataclass
+class AgentTask
+⋮----
+instruction: str
+context: str = ""
+previous_results: list[AgentResponse] | None = None
+⋮----
+class IAgent(ABC)
+⋮----
+"""
+    Interface Segregation Principle: Minimal interface
+    Agents only need to process tasks
+    """
+⋮----
+@abstractmethod
+    async def process(self, task: AgentTask) -> AgentResponse
+⋮----
+"""Process a task and return response"""
+⋮----
+@property
+@abstractmethod
+    def name(self) -> str
+⋮----
+"""Agent identifier"""
+⋮----
+@property
+@abstractmethod
+    def role(self) -> str
+⋮----
+"""Agent role/expertise"""
+
+================
+File: src/infrastructure/__init__.py
+================
+
+
+================
+File: src/infrastructure/llm_client.py
+================
+class ILLMClient(ABC)
+⋮----
+@abstractmethod
+    async def generate(self, prompt: str, temperature: float = 0.7) -> str
+class OllamaClient(ILLMClient)
+⋮----
+async def generate(self, prompt: str, temperature: float = 0.7) -> str
+⋮----
+response = await client.post(
+⋮----
+class MockLLMClient(ILLMClient)
+
+================
+File: src/infrastructure/prompt_manager.py
+================
+class IPromptLoader(ABC)
+⋮----
+@abstractmethod
+    def load(self, role: str) -> str
+class FilePromptLoader(IPromptLoader)
+⋮----
+def __init__(self, prompts_dir: str = "./prompts")
+def load(self, role: str) -> str
+⋮----
+prompt_file = self.prompts_dir / f"{role}.txt"
+⋮----
+def _get_default_prompt(self, role: str) -> str
+⋮----
+defaults = {
+⋮----
+class PromptBuilder
+⋮----
+"""
+        Single responsibility: Format prompt components
+        KISS: Simple string concatenation
+        """
+parts = [f"SYSTEM: {system_prompt}"]
+
+================
+File: src/__init__.py
+================
+
+
+================
+File: tests/__init__.py
+================
+
+
+================
+File: tests/test_basic.py
+================
+@pytest.mark.asyncio
+async def test_agent_creation()
+⋮----
+factory = AgentFactory(use_mocks=True)
+agent = factory.create_researcher()
+⋮----
+@pytest.mark.asyncio
+async def test_agent_processing()
+⋮----
+task = AgentTask(instruction="What is 2+2?")
+response = await agent.process(task)
+
+================
+File: .gitignore
+================
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data
+data/
+*.db
+*.sqlite
+
+# Logs
+logs/
+*.log
+.coverage
+
+================
+File: pyproject.toml
+================
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "obsidian-agent-rag"
+version = "0.1.0"
+description = "Multi-agent RAG system for Obsidian"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27.0",
+    "pydantic>=2.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+================
+File: README.md
+================
+# Obsidian Multi-Agent RAG System
+
+Local, privacy-first AI agent system with specialized roles.
+
+## Quick Start
+
+1. **Create virtual environment:**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   # OR
+   venv\Scripts\activate  # Windows
+   ```
+
+2. **Install in development mode:**
+   ```bash
+   pip install -e .
+   ```
+
+3. **Copy artifacts to src/ directories:**
+   - artifact #1 → src/domain/agent_interface.py
+   - artifact #2 → src/infrastructure/prompt_manager.py
+   - artifact #3 → src/infrastructure/llm_client.py
+   - artifact #4 → src/agents/concrete_agent.py
+   - artifact #5 → src/agents/agent_factory.py
+   - artifact #6 → src/application/orchestrator.py
+   - artifact #7 → examples/example_usage.py
+
+4. **Run example:**
+   ```bash
+   python examples/example_usage.py
+   ```
+
+5. **Run tests:**
+   ```bash
+   pytest tests/
+   ```
+
+## Architecture
+
+- **Domain Layer**: Core interfaces (IAgent, AgentTask, AgentResponse)
+- **Application Layer**: Orchestration logic (AgentOrchestrator)
+- **Infrastructure Layer**: External services (LLM clients, prompt loaders)
+- **Agents Layer**: Concrete implementations (BaseAgent, Factory)
+
+## Design Principles
+
+- **Clean Architecture**: Separation of concerns, dependency inversion
+- **SOLID**: Single responsibility, open/closed, etc.
+- **KISS**: Keep it simple and maintainable
+- **DI**: Dependency injection throughout
+
+## Troubleshooting
+
+If you get import errors, make sure you:
+1. Installed the package: `pip install -e .`
+2. Activated your virtual environment
+3. Have all `__init__.py` files in place
+
+## Next Steps
+
+- [ ] Set up Ollama locally
+- [ ] Test with real LLM
+- [ ] Add Obsidian integration (Phase 2)
+- [ ] Add vector search (Phase 3)
+- [ ] Add MCP servers (Phase 4)
+
+================
+File: requirements.txt
+================
+annotated-types==0.7.0
+anyio==4.12.1
+certifi==2026.1.4
+coverage==7.13.1
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.11
+iniconfig==2.3.0
+# Editable Git install with no remote (obsidian-agent-rag==0.1.0)
+-e /home/odin/Documents/Vaults/ciel-kb/obsidian-agentic-rag
+packaging==25.0
+pluggy==1.6.0
+pydantic==2.12.5
+pydantic_core==2.41.5
+Pygments==2.19.2
+pytest==9.0.2
+pytest-asyncio==1.3.0
+pytest-cov==7.0.0
+typing-inspection==0.4.2
+typing_extensions==4.15.0
+
+================
+File: setup_project.py
+================
+def create_file(path: Path, content: str)
+def setup_project()
+⋮----
+"""Create complete project structure"""
+⋮----
+base = Path(".")
+dirs = [
+⋮----
+# Create setup.py (IMPORTANT for imports)
+⋮----
+vscode_dir = base / ".vscode"
+
+================
+File: setup.py
+================
+
+
+
+
+
+
+================================================================
+End of Codebase
+================================================================
