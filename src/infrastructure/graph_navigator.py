@@ -54,6 +54,10 @@ class GraphNavigator(IGraphMCP):
             await self._build_graph()
 
         graph = self._graph_cache
+        # Defensive: if graph build failed, return empty backlinks
+        if graph is None:
+            return []
+
         if path not in graph:
             return []
 
@@ -131,6 +135,9 @@ class GraphNavigator(IGraphMCP):
             await self._build_graph()
 
         graph = self._graph_cache
+        # If graph is still None after attempting build, return no path
+        if graph is None:
+            return None
 
         try:
             path = nx.shortest_path(graph, start, end)
@@ -177,18 +184,34 @@ class GraphNavigator(IGraphMCP):
             await self._build_graph()
 
         graph = self._graph_cache
+        if graph is None:
+            # Return a safe default when graph is unavailable
+            return {
+                "total_notes": 0,
+                "total_links": 0,
+                "avg_out_degree": 0,
+                "avg_in_degree": 0,
+                "connected_components": 0,
+            }
+
+        total_nodes = graph.number_of_nodes()
+        total_links = graph.number_of_edges()
+        avg_out = (
+            sum(graph.out_degree(n) for n in graph.nodes()) / total_nodes
+            if total_nodes > 0
+            else 0
+        )
+        avg_in = (
+            sum(graph.in_degree(n) for n in graph.nodes()) / total_nodes
+            if total_nodes > 0
+            else 0
+        )
 
         return {
-            "total_notes": graph.number_of_nodes(),
-            "total_links": graph.number_of_edges(),
-            "avg_out_degree": sum(graph.out_degree(n) for n in graph.nodes())
-            / graph.number_of_nodes()
-            if graph.number_of_nodes() > 0
-            else 0,
-            "avg_in_degree": sum(graph.in_degree(n) for n in graph.nodes())
-            / graph.number_of_nodes()
-            if graph.number_of_nodes() > 0
-            else 0,
+            "total_notes": total_nodes,
+            "total_links": total_links,
+            "avg_out_degree": avg_out,
+            "avg_in_degree": avg_in,
             "connected_components": nx.number_weakly_connected_components(graph),
         }
 
@@ -202,12 +225,13 @@ class GraphNavigator(IGraphMCP):
             await self._build_graph()
 
         graph = self._graph_cache
+        if graph is None:
+            return []
 
         # Calculate total degree (in + out)
-        degrees = {
-            node: graph.in_degree(node) + graph.out_degree(node)
-            for node in graph.nodes()
-        }
+        degrees = {}
+        for node in graph.nodes():
+            degrees[node] = graph.in_degree(node) + graph.out_degree(node)
 
         # Sort by degree
         sorted_nodes = sorted(degrees.items(), key=lambda x: x[1], reverse=True)
@@ -227,8 +251,8 @@ class GraphNavigator(IGraphMCP):
             await self._build_graph()
 
         graph = self._graph_cache
-
-        if path not in graph:
+        # Defensive: ensure graph exists and the path is present
+        if graph is None or path not in graph:
             return []
 
         # Get neighbors of target note
