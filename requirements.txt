@@ -1,0 +1,7 @@
+# Core
+httpx          # Async HTTP client for Ollama
+pydantic       # Data validation
+
+# Optional (Phase 2+)
+# chromadb==0.4.22     # Vector database
+# sentence-transformers  # Embeddings

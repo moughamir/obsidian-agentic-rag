@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: obsidian-agent-rag
+Version: 0.1.0
+Summary: Multi-agent RAG system for Obsidian
+Requires-Python: >=3.10
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: pydantic>=2.6.0
