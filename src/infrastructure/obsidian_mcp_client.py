@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
+import yaml
 
 from src.infrastructure.mcp_interface import IObsidianMCP, MCPDocument, MCPSearchQuery
 
@@ -118,19 +119,10 @@ class ObsidianMCPClient(IObsidianMCP):
             end_idx = content.find("---", 3)
             if end_idx == -1:
                 return {}
-
+            
             yaml_content = content[3:end_idx].strip()
-
-            # Simple YAML parser (for basic cases)
-            # In production, use PyYAML
-            metadata = {}
-            for line in yaml_content.split("\n"):
-                if ":" in line:
-                    key, value = line.split(":", 1)
-                    metadata[key.strip()] = value.strip()
-
-            return metadata
-        except Exception:
+            return yaml.safe_load(yaml_content) or {}
+        except (yaml.YAMLError, IndexError):
             return {}
 
     async def get_tags(self, path: str) -> List[str]:
@@ -234,16 +226,8 @@ class LocalObsidianReader(IObsidianMCP):
                 return {}
 
             yaml_content = content[3:end_idx].strip()
-
-            # Simple parser
-            metadata = {}
-            for line in yaml_content.split("\n"):
-                if ":" in line:
-                    key, value = line.split(":", 1)
-                    metadata[key.strip()] = value.strip()
-
-            return metadata
-        except Exception:
+            return yaml.safe_load(yaml_content) or {}
+        except (yaml.YAMLError, IndexError):
             return {}
 
     async def get_tags(self, path: str) -> List[str]:

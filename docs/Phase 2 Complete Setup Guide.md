@@ -19,99 +19,78 @@ Phase 1 gave you the multi-agent framework. Phase 2 adds:
 
 ## 🔧 Installation
 
-### Step 1: Update Dependencies
+### Step 1: Install Dependencies
+
+Now that all dependencies are managed via `pyproject.toml`, you can install the project with all development and performance-enhancing optional dependencies:
 
 ```bash
-# Activate your venv
+# Activate your venv (if not already active)
 source venv/bin/activate
 
-# Install Phase 2 dependencies
-pip install -r requirements-phase2.txt
+# Install the project in editable mode with dev and performance extras
+pip install -e .[dev,performance]
 ```
 
-**requirements-phase2.txt:**
-```
-# Phase 1 (already installed)
-httpx==0.27.0
-pydantic==2.6.0
-pytest==8.0.0
-pytest-asyncio==0.23.0
+These dependencies include:
 
-# Phase 2 - RAG Components
-sentence-transformers==2.3.1   # Embeddings
-chromadb==0.4.22               # Vector database
-rank-bm25==0.2.2               # Keyword search
-networkx==3.2.1                # Graph navigation
+*   `httpx>=0.27.0`
+*   `pydantic>=2.6.0`
+*   `mcp>=1.0.0`
+*   `numpy>=1.26.0`
+*   `python-dotenv>=1.0.0`
+*   `sentence-transformers>=2.3.1` (Embeddings)
+*   `chromadb>=0.4.22` (Vector database)
+*   `rank-bm25>=0.2.2` (Keyword search)
+*   `networkx>=3.2.1` (Graph navigation)
+*   `PyYAML>=6.0` (YAML parsing)
 
-# Optional (for better performance)
-# torch==2.1.0                 # GPU acceleration
-# faiss-cpu==1.7.4             # Faster vector search
-```
+**Development Dependencies (via `.[dev]`):**
+*   `pytest>=8.0.0`
+*   `pytest-asyncio>=0.23.0`
+*   `coverage`
 
-### Step 2: Copy Phase 2 Code Files
+**Performance Dependencies (via `.[performance]`):**
+*   `torch>=2.1.0` (Optional: GPU acceleration for embeddings)
+*   `faiss-cpu>=1.7.4` (Optional: Faster vector search)
 
-Copy these new artifacts to your project:
 
-```
-artifact #13 → src/infrastructure/mcp_interface.py
-artifact #14 → src/infrastructure/obsidian_mcp_client.py
-artifact #15 → src/infrastructure/graph_navigator.py
-artifact #16 → src/infrastructure/vector_rag.py
-artifact #17 → src/infrastructure/toon_converter.py
-artifact #18 → src/infrastructure/rt_scheduler.py
-artifact #19 → src/application/rag_pipeline.py
-artifact #20 → src/agents/rag_agent.py
-artifact #21 → examples/complete_rag_example.py
-```
+### Step 2: Verify Project Structure
 
-### Step 3: Verify Installation
-
-```bash
-# Test imports
-python -c "from src.application.rag_pipeline import RAGPipeline; print('✓ RAG imports OK')"
-
-# Run example with mock
-python examples/complete_rag_example.py --vault ./test_vault
-```
-
----
-
-## 📁 Project Structure (Updated)
+All necessary files are included in the project structure. Ensure your local setup matches this for development.
 
 ```
 obsidian-agent-rag/
 ├── src/
 │   ├── domain/
-│   │   ├── agent_interface.py        # Phase 1
-│   │   └── NEW: No changes
+│   │   ├── agent_interface.py
 │   │
 │   ├── application/
-│   │   ├── orchestrator.py           # Phase 1
-│   │   └── rag_pipeline.py           # Phase 2 ✨
+│   │   ├── orchestrator.py
+│   │   └── rag_pipeline.py
 │   │
 │   ├── infrastructure/
-│   │   ├── llm_client.py             # Phase 1
-│   │   ├── prompt_manager.py         # Phase 1
-│   │   ├── mcp_interface.py          # Phase 2 ✨
-│   │   ├── obsidian_mcp_client.py    # Phase 2 ✨
-│   │   ├── graph_navigator.py        # Phase 2 ✨
-│   │   ├── vector_rag.py             # Phase 2 ✨
-│   │   ├── toon_converter.py         # Phase 2 ✨
-│   │   └── rt_scheduler.py           # Phase 2 ✨
+│   │   ├── llm_client.py
+│   │   ├── prompt_manager.py
+│   │   ├── mcp_interface.py
+│   │   ├── obsidian_mcp_client.py
+│   │   ├── graph_navigator.py
+│   │   ├── vector_rag.py
+│   │   ├── toon_converter.py
+│   │   └── rt_scheduler.py
 │   │
 │   └── agents/
-│       ├── concrete_agent.py         # Phase 1
-│       ├── agent_factory.py          # Phase 1
-│       └── rag_agent.py              # Phase 2 ✨
+│       ├── concrete_agent.py
+│       ├── agent_factory.py
+│       └── rag_agent.py
 │
 ├── examples/
-│   ├── example_usage.py              # Phase 1
-│   └── complete_rag_example.py       # Phase 2 ✨
+│   ├── example_usage.py
+│   └── complete_rag_example.py
 │
-├── data/                             # Phase 2 ✨
-│   └── vector_db/                    # ChromaDB storage
+├── data/
+│   └── vector_db/                    # ChromaDB storage (created on first run)
 │
-└── test_vault/                       # Your Obsidian vault
+└── test_vault/                       # Your Obsidian vault (or create one for testing)
     ├── note1.md
     ├── note2.md
     └── ...

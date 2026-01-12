@@ -13,13 +13,24 @@ dependencies = [
     "mcp>=1.0.0",
     "numpy>=1.26.0",
     "python-dotenv>=1.0.0",
+    "sentence-transformers>=2.3.1",
+    "chromadb>=0.4.22",
+    "rank-bm25>=0.2.2",
+    "networkx>=3.2.1",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    "coverage",
 ]
+performance = [
+    "torch>=2.1.0",
+    "faiss-cpu>=1.7.4",
+]
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

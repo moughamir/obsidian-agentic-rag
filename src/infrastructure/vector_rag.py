@@ -99,6 +99,23 @@ class VectorRAG(IVectorMCP):
         self._documents = []
         self._doc_ids = []
 
+        # Immediately build BM25 index from existing documents in ChromaDB
+        self._rebuild_bm25_from_chroma()
+
+    def _rebuild_bm25_from_chroma(self):
+        """Helper to build BM25 index from all docs in ChromaDB."""
+        if not BM25_AVAILABLE:
+            return
+
+        all_docs = self.collection.get()
+        if not all_docs or not all_docs["ids"]:
+            return
+
+        self._documents = all_docs["documents"]
+        self._doc_ids = all_docs["ids"]
+        tokenized_docs = [doc.lower().split() for doc in self._documents]
+        self._bm25 = BM25Okapi(tokenized_docs)
+
     async def semantic_search(self, query: str, k: int = 5) -> List[MCPDocument]:
         """
         Pure semantic search via embeddings
@@ -250,7 +267,7 @@ class VectorRAG(IVectorMCP):
         """
         try:
             reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-        except Exception:
+        except (OSError, ValueError):  # Catch common model loading errors (e.g., model not found, network issues)
             # Fallback: return original ranking
             return candidates[:top_k]
 
