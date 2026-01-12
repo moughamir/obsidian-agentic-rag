@@ -8,15 +8,33 @@ Combines:
 - Reranking for precision
 """
 
-from typing import List, Optional
-import numpy as np
-import copy
 from dataclasses import dataclass
+from typing import Any, List, Optional
+
+# Optional numpy import. Provide a minimal fallback for environments where numpy
+# is not installed (e.g., CI or lightweight dev environments). The code uses
+# only `np.argsort(...)`, so the fallback implements that.
+try:
+    import numpy as np  # type: ignore
+
+    NP_AVAILABLE = True
+except Exception:  # pragma: no cover - light fallback when numpy is absent
+    NP_AVAILABLE = False
+
+    class _NumpyFallback:
+        @staticmethod
+        def argsort(arr):
+            # Return indices that would sort arr ascending.
+            # Accepts sequences (lists, tuples, etc.) of comparable items.
+            return sorted(range(len(arr)), key=lambda i: arr[i])
+
+    np = _NumpyFallback()
+
 from src.infrastructure.mcp_interface import IVectorMCP, MCPDocument
 
-
 try:
-    from sentence_transformers import SentenceTransformer, CrossEncoder
+    from sentence_transformers import CrossEncoder, SentenceTransformer
+
     SENTENCE_TRANSFORMERS_AVAILABLE = True
 except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
@@ -24,12 +42,14 @@ except ImportError:
 try:
     import chromadb
     from chromadb.config import Settings
+
     CHROMADB_AVAILABLE = True
 except ImportError:
     CHROMADB_AVAILABLE = False
 
 try:
     from rank_bm25 import BM25Okapi
+
     BM25_AVAILABLE = True
 except ImportError:
     BM25_AVAILABLE = False
@@ -38,6 +58,7 @@ except ImportError:
 @dataclass
 class EmbeddingConfig:
     """Configuration for embedding model"""
+
     model_name: str = "all-MiniLM-L6-v2"  # Fast, 80MB
     # Alternatives:
     # - "BAAI/bge-small-en-v1.5" (better quality, 130MB)
@@ -60,8 +81,8 @@ class VectorRAG(IVectorMCP):
 
     def __init__(
         self,
-        config: EmbeddingConfig = None,
-        persist_directory: str = "./data/vector_db"
+        config: Optional[EmbeddingConfig] = None,
+        persist_directory: str = "./data/vector_db",
     ):
         if not SENTENCE_TRANSFORMERS_AVAILABLE:
             raise ImportError(
@@ -70,37 +91,55 @@ class VectorRAG(IVectorMCP):
             )
 
         if not CHROMADB_AVAILABLE:
-            raise ImportError(
-                "chromadb required. "
-                "Install: pip install chromadb"
-            )
+            raise ImportError("chromadb required. Install: pip install chromadb")
 
-        self.config = config or EmbeddingConfig()
+        # Normalize config and pre-declare attributes for static typing
+        self.config: EmbeddingConfig = config or EmbeddingConfig()
+
+        # Attributes that depend on optional third-party packages
+        self.embedder: Any = None
+        self.client: Any = None
+        self.collection: Any = None
 
         # Load embedding model
         self.embedder = SentenceTransformer(
-            self.config.model_name,
-            device=self.config.device
+            self.config.model_name, device=self.config.device
         )
 
         # Initialize ChromaDB
-        self.client = chromadb.PersistentClient(path=persist_directory)
+        self.client = chromadb.Client(
+            Settings(
+                chroma_db_impl="duckdb+parquet", persist_directory=persist_directory
+            )
+        )
 
         self.collection = self.client.get_or_create_collection(
-            name="obsidian_notes",
-            metadata={"hnsw:space": "cosine"}
+            name="obsidian_notes", metadata={"hnsw:space": "cosine"}
         )
 
         # BM25 for keyword search
-        self._bm25 = None
-        self._documents = []
-        self._doc_ids = []
+        self._bm25: Any = None
+        self._documents: List[str] = []
+        self._doc_ids: List[str] = []
 
-    async def semantic_search(
-        self,
-        query: str,
-        k: int = 5
-    ) -> List[MCPDocument]:
+        # Immediately build BM25 index from existing documents in ChromaDB
+        self._rebuild_bm25_from_chroma()
+
+    def _rebuild_bm25_from_chroma(self):
+        """Helper to build BM25 index from all docs in ChromaDB."""
+        if not BM25_AVAILABLE:
+            return
+
+        all_docs = self.collection.get()
+        if not all_docs or not all_docs["ids"]:
+            return
+
+        self._documents = all_docs["documents"]
+        self._doc_ids = all_docs["ids"]
+        tokenized_docs = [doc.lower().split() for doc in self._documents]
+        self._bm25 = BM25Okapi(tokenized_docs)
+
+    async def semantic_search(self, query: str, k: int = 5) -> List[MCPDocument]:
         """
         Pure semantic search via embeddings
 
@@ -110,10 +149,7 @@ class VectorRAG(IVectorMCP):
         query_embedding = self.embedder.encode(query).tolist()
 
         # Search vector database
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=k
-        )
+        results = self.collection.query(query_embeddings=[query_embedding], n_results=k)
 
         # Convert to MCPDocument
         documents = []
@@ -124,17 +160,15 @@ class VectorRAG(IVectorMCP):
                     path=results["metadatas"][0][i].get("path", ""),
                     content=results["documents"][0][i],
                     metadata=results["metadatas"][0][i],
-                    score=1 - results["distances"][0][i]  # Convert distance to similarity
+                    score=1
+                    - results["distances"][0][i],  # Convert distance to similarity
                 )
                 documents.append(doc)
 
         return documents
 
     async def hybrid_search(
-        self,
-        query: str,
-        k: int = 5,
-        vector_weight: float = 0.6
+        self, query: str, k: int = 5, vector_weight: float = 0.6
     ) -> List[MCPDocument]:
         """
         Hybrid search: Vector (60%) + BM25 (40%)
@@ -162,7 +196,7 @@ class VectorRAG(IVectorMCP):
         bm25_scores = self._bm25.get_scores(tokenized_query)
 
         # Get top BM25 candidates
-        bm25_indices = np.argsort(bm25_scores)[::-1][:k*2]
+        bm25_indices = np.argsort(bm25_scores)[::-1][: k * 2]
 
         # Combine scores
         doc_scores = {}
@@ -175,7 +209,7 @@ class VectorRAG(IVectorMCP):
             doc_scores[doc_id] = {
                 "vector": normalized_score * vector_weight,
                 "bm25": 0,
-                "doc": doc
+                "doc": doc,
             }
 
         # Add BM25 scores (normalized)
@@ -194,8 +228,8 @@ class VectorRAG(IVectorMCP):
                     "doc": MCPDocument(
                         path=doc_id,
                         content=self._documents[idx],
-                        metadata={"source": "bm25"}
-                    )
+                        metadata={"source": "bm25"},
+                    ),
                 }
 
         # Calculate final scores and sort
@@ -228,26 +262,14 @@ class VectorRAG(IVectorMCP):
         for doc in documents:
             ids.append(doc.path)
             texts.append(doc.content)
-
-            # Deep copy metadata to avoid side effects
-            metadata_copy = copy.deepcopy(doc.metadata)
-
-            # Convert list values to strings for ChromaDB compatibility
-            for key, value in metadata_copy.items():
-                if isinstance(value, list):
-                    metadata_copy[key] = ",".join(map(str, value))
-
-            metadatas.append(metadata_copy)
+            metadatas.append(doc.metadata)
 
         # Generate embeddings in batch (faster)
         embeddings = self.embedder.encode(texts).tolist()
 
         # Add to ChromaDB
         self.collection.add(
-            ids=ids,
-            documents=texts,
-            metadatas=metadatas,
-            embeddings=embeddings
+            ids=ids, documents=texts, metadatas=metadatas, embeddings=embeddings
         )
 
         # Update BM25 index
@@ -258,10 +280,7 @@ class VectorRAG(IVectorMCP):
             self._bm25 = BM25Okapi(tokenized_docs)
 
     async def rerank(
-        self,
-        query: str,
-        candidates: List[MCPDocument],
-        top_k: int = 3
+        self, query: str, candidates: List[MCPDocument], top_k: int = 3
     ) -> List[MCPDocument]:
         """
         Rerank candidates using CrossEncoder
@@ -270,8 +289,11 @@ class VectorRAG(IVectorMCP):
         Use after initial retrieval to refine top results
         """
         try:
-            reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-        except Exception:
+            reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+        except (
+            OSError,
+            ValueError,
+        ):  # Catch common model loading errors (e.g., model not found, network issues)
             # Fallback: return original ranking
             return candidates[:top_k]
 
@@ -282,10 +304,7 @@ class VectorRAG(IVectorMCP):
         scores = reranker.predict(pairs)
 
         # Combine with documents
-        reranked = [
-            (doc, score)
-            for doc, score in zip(candidates, scores)
-        ]
+        reranked = [(doc, score) for doc, score in zip(candidates, scores)]
 
         # Sort by reranking score
         reranked.sort(key=lambda x: x[1], reverse=True)
@@ -307,28 +326,23 @@ class MockVectorRAG(IVectorMCP):
     def __init__(self):
         self._documents: List[MCPDocument] = []
 
-    async def semantic_search(
-        self,
-        query: str,
-        k: int = 5
-    ) -> List[MCPDocument]:
+    async def semantic_search(self, query: str, k: int = 5) -> List[MCPDocument]:
         """Simple keyword matching"""
         results = []
         query_lower = query.lower()
 
         for doc in self._documents:
             if query_lower in doc.content.lower():
-                doc.score = doc.content.lower().count(query_lower) / len(doc.content.split())
+                doc.score = doc.content.lower().count(query_lower) / len(
+                    doc.content.split()
+                )
                 results.append(doc)
 
         results.sort(key=lambda x: x.score, reverse=True)
         return results[:k]
 
     async def hybrid_search(
-        self,
-        query: str,
-        k: int = 5,
-        vector_weight: float = 0.6
+        self, query: str, k: int = 5, vector_weight: float = 0.6
     ) -> List[MCPDocument]:
         """Fallback to semantic search"""
         return await self.semantic_search(query, k)

@@ -23,8 +23,8 @@ chunks
   2  0.87  ...
 """
 
-from typing import Any, Dict, List
 import json
+from typing import Any, Dict, List
 
 
 class TOONConverter:
@@ -167,10 +167,7 @@ class ContextOptimizer:
     """
 
     @staticmethod
-    def optimize_documents_for_llm(
-        documents: List[Any],
-        format: str = "toon"
-    ) -> str:
+    def optimize_documents_for_llm(documents: List[Any], format: str = "toon") -> str:
         """
         Convert document list to token-efficient format
 
@@ -186,11 +183,13 @@ class ContextOptimizer:
             doc_data = []
             for doc in documents:
                 if hasattr(doc, "__dict__"):
-                    doc_data.append({
-                        "path": doc.path,
-                        "score": round(doc.score, 2),
-                        "content": doc.content[:500]  # Truncate long content
-                    })
+                    doc_data.append(
+                        {
+                            "path": doc.path,
+                            "score": round(doc.score, 2),
+                            "content": doc.content[:500],  # Truncate long content
+                        }
+                    )
                 else:
                     doc_data.append(doc)
 
@@ -229,7 +228,7 @@ class ContextOptimizer:
             "json_tokens": json_tokens,
             "toon_tokens": toon_tokens,
             "token_savings_pct": round(savings, 1),
-            "bytes_saved": len(json_str) - len(toon_str)
+            "bytes_saved": len(json_str) - len(toon_str),
         }
 
 
@@ -245,21 +244,21 @@ def example_toon_conversion():
                 "id": 1,
                 "path": "architecture/clean.md",
                 "score": 0.95,
-                "content": "Clean architecture separates concerns into layers..."
+                "content": "Clean architecture separates concerns into layers...",
             },
             {
                 "id": 2,
                 "path": "architecture/solid.md",
                 "score": 0.87,
-                "content": "SOLID principles guide clean code..."
+                "content": "SOLID principles guide clean code...",
             },
             {
                 "id": 3,
                 "path": "architecture/kiss.md",
                 "score": 0.82,
-                "content": "KISS principle advocates simplicity..."
-            }
-        ]
+                "content": "KISS principle advocates simplicity...",
+            },
+        ],
     }
 
     # Convert to TOON
@@ -267,11 +266,11 @@ def example_toon_conversion():
 
     print("JSON format:")
     print(json.dumps(data, indent=2))
-    print("\n" + "="*60 + "\n")
+    print("\n" + "=" * 60 + "\n")
 
     print("TOON format:")
     print(toon_output)
-    print("\n" + "="*60 + "\n")
+    print("\n" + "=" * 60 + "\n")
 
     # Compare efficiency
     metrics = ContextOptimizer.compare_formats(data)

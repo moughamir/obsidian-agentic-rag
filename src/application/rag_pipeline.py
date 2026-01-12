@@ -10,19 +10,21 @@ Combines:
 - RT Scheduler (performance)
 """
 
-from typing import List, Optional
 from dataclasses import dataclass
+from typing import List, Optional
+
+from src.infrastructure.graph_navigator import GraphNavigator
 from src.infrastructure.mcp_interface import MCPDocument
 from src.infrastructure.obsidian_mcp_client import IObsidianMCP
-from src.infrastructure.graph_navigator import GraphNavigator
-from src.infrastructure.vector_rag import IVectorMCP
-from src.infrastructure.toon_converter import TOONConverter, ContextOptimizer
 from src.infrastructure.rt_scheduler import RTScheduler
+from src.infrastructure.toon_converter import ContextOptimizer, TOONConverter
+from src.infrastructure.vector_rag import IVectorMCP
 
 
 @dataclass
 class RAGConfig:
     """Configuration for RAG pipeline"""
+
     # Search parameters
     top_k: int = 5
     graph_depth: int = 2
@@ -57,22 +59,18 @@ class RAGPipeline:
         self,
         obsidian_client: IObsidianMCP,
         vector_client: IVectorMCP,
-        config: RAGConfig = None
+        config: Optional[RAGConfig] = None,
     ):
         self.obsidian = obsidian_client
         self.vector = vector_client
         self.graph = GraphNavigator(obsidian_client)
-        self.config = config or RAGConfig()
+        self.config: RAGConfig = config or RAGConfig()
 
         # Initialize RT scheduling if enabled
         if self.config.use_rt_scheduling and RTScheduler.is_rt_available():
             RTScheduler.set_priority(RTScheduler.PRIORITY_HIGH)
 
-    async def retrieve(
-        self,
-        query: str,
-        strategy: str = "hybrid"
-    ) -> List[MCPDocument]:
+    async def retrieve(self, query: str, strategy: str = "hybrid") -> List[MCPDocument]:
         """
         Main retrieval method
 
@@ -108,16 +106,13 @@ class RAGPipeline:
     @RTScheduler.with_priority(RTScheduler.PRIORITY_HIGH)
     async def _vector_retrieval(self, query: str) -> List[MCPDocument]:
         """Pure semantic search"""
-        results = await self.vector.semantic_search(
-            query,
-            k=self.config.top_k
-        )
+        results = await self.vector.semantic_search(query, k=self.config.top_k)
         return results
 
     async def _keyword_retrieval(self, query: str) -> List[MCPDocument]:
         """Pure keyword search via Obsidian"""
         results = await self.obsidian.search_vault(query)
-        return results[:self.config.top_k]
+        return results[: self.config.top_k]
 
     @RTScheduler.with_priority(RTScheduler.PRIORITY_HIGH)
     async def _hybrid_retrieval(self, query: str) -> List[MCPDocument]:
@@ -127,17 +122,13 @@ class RAGPipeline:
         Best for most queries
         """
         results = await self.vector.hybrid_search(
-            query,
-            k=self.config.top_k,
-            vector_weight=self.config.vector_weight
+            query, k=self.config.top_k, vector_weight=self.config.vector_weight
         )
 
         # Rerank if enabled
         if self.config.rerank and len(results) > 3:
             results = await self.vector.rerank(
-                query,
-                results,
-                top_k=min(3, len(results))
+                query, results, top_k=min(3, len(results))
             )
 
         return results
@@ -160,8 +151,7 @@ class RAGPipeline:
 
         for doc in initial_results[:3]:  # Expand top 3
             graph_docs = await self.graph.expand_context(
-                doc.path,
-                depth=self.config.graph_depth
+                doc.path, depth=self.config.graph_depth
             )
 
             # Add unique documents
@@ -173,7 +163,7 @@ class RAGPipeline:
         # Sort by relevance
         expanded_docs.sort(key=lambda x: x.score, reverse=True)
 
-        return expanded_docs[:self.config.top_k]
+        return expanded_docs[: self.config.top_k]
 
     async def _full_retrieval(self, query: str) -> List[MCPDocument]:
         """
@@ -189,10 +179,7 @@ class RAGPipeline:
         seen_paths = {doc.path for doc in hybrid_docs}
 
         for doc in hybrid_docs[:2]:  # Expand top 2
-            expanded = await self.graph.expand_context(
-                doc.path,
-                depth=2
-            )
+            expanded = await self.graph.expand_context(doc.path, depth=2)
 
             for exp_doc in expanded:
                 if exp_doc.path not in seen_paths:
@@ -203,13 +190,9 @@ class RAGPipeline:
         all_docs = hybrid_docs + graph_docs
         all_docs.sort(key=lambda x: x.score, reverse=True)
 
-        return all_docs[:self.config.top_k]
+        return all_docs[: self.config.top_k]
 
-    def build_context(
-        self,
-        query: str,
-        documents: List[MCPDocument]
-    ) -> str:
+    def build_context(self, query: str, documents: List[MCPDocument]) -> str:
         """
         Build optimized context for LLM
 
@@ -227,7 +210,7 @@ class RAGPipeline:
                 "rank": i + 1,
                 "path": doc.path,
                 "score": round(doc.score, 3),
-                "content": self._truncate_content(doc.content)
+                "content": self._truncate_content(doc.content),
             }
 
             if self.config.include_metadata:
@@ -239,10 +222,7 @@ class RAGPipeline:
         # Format context
         if self.config.use_toon:
             # Use TOON for token efficiency
-            context_dict = {
-                "query": query,
-                "documents": doc_data
-            }
+            context_dict = {"query": query, "documents": doc_data}
             context = TOONConverter.to_toon(context_dict)
         else:
             # Standard format
@@ -267,29 +247,21 @@ class RAGPipeline:
 
         return context
 
-    def _truncate_content(
-        self,
-        content: str,
-        max_chars: int = 1000
-    ) -> str:
+    def _truncate_content(self, content: str, max_chars: int = 1000) -> str:
         """Truncate long content intelligently"""
         if len(content) <= max_chars:
             return content
 
         # Try to break at sentence boundary
         truncated = content[:max_chars]
-        last_period = truncated.rfind('.')
+        last_period = truncated.rfind(".")
 
         if last_period > max_chars * 0.7:  # If we found a good break point
-            return truncated[:last_period + 1]
+            return truncated[: last_period + 1]
         else:
             return truncated + "..."
 
-    async def augmented_query(
-        self,
-        query: str,
-        strategy: str = "hybrid"
-    ) -> dict:
+    async def augmented_query(self, query: str, strategy: str = "hybrid") -> dict:
         """
         Complete RAG query
 
@@ -305,17 +277,19 @@ class RAGPipeline:
         # Calculate metrics
         metrics = {
             "num_documents": len(documents),
-            "avg_score": sum(d.score for d in documents) / len(documents) if documents else 0,
+            "avg_score": sum(d.score for d in documents) / len(documents)
+            if documents
+            else 0,
             "context_tokens": ContextOptimizer.estimate_tokens(context),
             "using_toon": self.config.use_toon,
-            "using_rt": self.config.use_rt_scheduling
+            "using_rt": self.config.use_rt_scheduling,
         }
 
         return {
             "query": query,
             "context": context,
             "documents": documents,
-            "metrics": metrics
+            "metrics": metrics,
         }
 
 
@@ -328,8 +302,7 @@ class RAGPipelineFactory:
 
     @staticmethod
     def create_local_pipeline(
-        vault_path: str,
-        use_vector_search: bool = True
+        vault_path: str, use_vector_search: bool = True
     ) -> RAGPipeline:
         """
         Create pipeline for local Obsidian vault
@@ -339,7 +312,7 @@ class RAGPipelineFactory:
         - VectorRAG or MockVectorRAG
         """
         from src.infrastructure.obsidian_mcp_client import LocalObsidianReader
-        from src.infrastructure.vector_rag import VectorRAG, MockVectorRAG
+        from src.infrastructure.vector_rag import MockVectorRAG, VectorRAG
 
         obsidian_client = LocalObsidianReader(vault_path)
 
@@ -357,16 +330,14 @@ class RAGPipelineFactory:
             graph_depth=2,
             use_hybrid_search=use_vector_search,
             use_toon=True,
-            use_rt_scheduling=RTScheduler.is_rt_available()
+            use_rt_scheduling=RTScheduler.is_rt_available(),
         )
 
         return RAGPipeline(obsidian_client, vector_client, config)
 
     @staticmethod
     def create_api_pipeline(
-        api_key: str,
-        host: str = "127.0.0.1",
-        port: int = 27124
+        api_key: str, host: str = "127.0.0.1", port: int = 27124
     ) -> RAGPipeline:
         """
         Create pipeline using Obsidian REST API
@@ -374,7 +345,7 @@ class RAGPipelineFactory:
         Requires: Obsidian Local REST API plugin
         """
         from src.infrastructure.obsidian_mcp_client import ObsidianMCPClient
-        from src.infrastructure.vector_rag import VectorRAG, MockVectorRAG
+        from src.infrastructure.vector_rag import MockVectorRAG, VectorRAG
 
         obsidian_client = ObsidianMCPClient(api_key, host, port)
 
@@ -384,8 +355,7 @@ class RAGPipelineFactory:
             vector_client = MockVectorRAG()
 
         config = RAGConfig(
-            use_toon=True,
-            use_rt_scheduling=RTScheduler.is_rt_available()
+            use_toon=True, use_rt_scheduling=RTScheduler.is_rt_available()
         )
 
         return RAGPipeline(obsidian_client, vector_client, config)

@@ -10,11 +10,11 @@ Leverages Linux RT kernel for:
 Requires: Linux with PREEMPT_RT patch (Arch Linux RT kernel)
 """
 
+import asyncio
 import os
 import sys
-from typing import Callable, Any
 from functools import wraps
-import asyncio
+from typing import Any, Callable
 
 
 class RTScheduler:
@@ -32,14 +32,14 @@ class RTScheduler:
 
     # RT scheduling policies (Linux)
     SCHED_FIFO = 1  # First-In-First-Out
-    SCHED_RR = 2    # Round-Robin
+    SCHED_RR = 2  # Round-Robin
     SCHED_OTHER = 0  # Normal scheduling
 
     # Priority levels (1-99, higher = more priority)
-    PRIORITY_CRITICAL = 80   # Critical operations
-    PRIORITY_HIGH = 60       # Important operations
-    PRIORITY_NORMAL = 40     # Standard operations
-    PRIORITY_LOW = 20        # Background tasks
+    PRIORITY_CRITICAL = 80  # Critical operations
+    PRIORITY_HIGH = 60  # Important operations
+    PRIORITY_NORMAL = 40  # Standard operations
+    PRIORITY_LOW = 20  # Background tasks
 
     @staticmethod
     def is_rt_available() -> bool:
@@ -55,10 +55,7 @@ class RTScheduler:
             return False
 
     @staticmethod
-    def set_priority(
-        priority: int = PRIORITY_NORMAL,
-        policy: int = SCHED_FIFO
-    ) -> bool:
+    def set_priority(priority: int = PRIORITY_NORMAL, policy: int = SCHED_FIFO) -> bool:
         """
         Set RT priority for current process
 
@@ -100,12 +97,12 @@ class RTScheduler:
             policy_names = {
                 RTScheduler.SCHED_FIFO: "SCHED_FIFO",
                 RTScheduler.SCHED_RR: "SCHED_RR",
-                RTScheduler.SCHED_OTHER: "SCHED_OTHER"
+                RTScheduler.SCHED_OTHER: "SCHED_OTHER",
             }
 
             return {
                 "policy": policy_names.get(policy, "UNKNOWN"),
-                "priority": param.sched_priority
+                "priority": param.sched_priority,
             }
         except Exception:
             return {"policy": "UNAVAILABLE", "priority": 0}
@@ -121,6 +118,7 @@ class RTScheduler:
                 # This runs with high priority
                 pass
         """
+
         def decorator(func: Callable) -> Callable:
             @wraps(func)
             async def async_wrapper(*args, **kwargs) -> Any:
@@ -140,15 +138,13 @@ class RTScheduler:
                         policy_map = {
                             "SCHED_FIFO": RTScheduler.SCHED_FIFO,
                             "SCHED_RR": RTScheduler.SCHED_RR,
-                            "SCHED_OTHER": RTScheduler.SCHED_OTHER
+                            "SCHED_OTHER": RTScheduler.SCHED_OTHER,
                         }
                         original_policy = policy_map.get(
-                            original_info["policy"],
-                            RTScheduler.SCHED_OTHER
+                            original_info["policy"], RTScheduler.SCHED_OTHER
                         )
                         RTScheduler.set_priority(
-                            original_info["priority"],
-                            original_policy
+                            original_info["priority"], original_policy
                         )
 
             @wraps(func)
@@ -164,15 +160,13 @@ class RTScheduler:
                         policy_map = {
                             "SCHED_FIFO": RTScheduler.SCHED_FIFO,
                             "SCHED_RR": RTScheduler.SCHED_RR,
-                            "SCHED_OTHER": RTScheduler.SCHED_OTHER
+                            "SCHED_OTHER": RTScheduler.SCHED_OTHER,
                         }
                         original_policy = policy_map.get(
-                            original_info["policy"],
-                            RTScheduler.SCHED_OTHER
+                            original_info["policy"], RTScheduler.SCHED_OTHER
                         )
                         RTScheduler.set_priority(
-                            original_info["priority"],
-                            original_policy
+                            original_info["priority"], original_policy
                         )
 
             # Return appropriate wrapper
@@ -225,8 +219,7 @@ class PerformanceOptimizer:
 
         # Set high priority
         success = RTScheduler.set_priority(
-            RTScheduler.PRIORITY_HIGH,
-            RTScheduler.SCHED_FIFO
+            RTScheduler.PRIORITY_HIGH, RTScheduler.SCHED_FIFO
         )
 
         if success:
@@ -259,6 +252,7 @@ async def example_rt_usage():
     async def critical_embedding_generation():
         """Simulate embedding generation"""
         import time
+
         start = time.time()
         await asyncio.sleep(0.1)  # Simulate work
         elapsed = time.time() - start
@@ -269,6 +263,7 @@ async def example_rt_usage():
     async def normal_search():
         """Simulate search"""
         import time
+
         start = time.time()
         await asyncio.sleep(0.1)
         elapsed = time.time() - start

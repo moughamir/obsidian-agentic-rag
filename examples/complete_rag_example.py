@@ -12,21 +12,22 @@ Usage:
     python examples/complete_rag_example.py --vault /path/to/obsidian/vault
 """
 
-import asyncio
 import argparse
+import asyncio
+import os
 import sys
 from pathlib import Path
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.application.rag_pipeline import RAGPipelineFactory, RAGConfig
 from src.agents.rag_agent import RAGAgentFactory
+from src.application.orchestrator import AgentOrchestrator
+from src.application.rag_pipeline import RAGPipelineFactory
+from src.domain.agent_interface import AgentTask
 from src.infrastructure.llm_client import MockLLMClient, OllamaClient
 from src.infrastructure.prompt_manager import FilePromptLoader
-from src.application.orchestrator import AgentOrchestrator
-from src.domain.agent_interface import AgentTask
-from src.infrastructure.rt_scheduler import RTScheduler, PerformanceOptimizer
+from src.infrastructure.rt_scheduler import PerformanceOptimizer, RTScheduler
 from src.infrastructure.toon_converter import ContextOptimizer
 
 
@@ -44,27 +45,17 @@ async def setup_rag_system(vault_path: str, use_real_llm: bool = False):
     print("\n1️⃣  Initializing RAG Pipeline...")
     rag_pipeline = RAGPipelineFactory.create_local_pipeline(
         vault_path=vault_path,
-        use_vector_search=True  # Set False if dependencies not installed
+        use_vector_search=True,  # Set False if dependencies not installed
     )
     print("   ✓ RAG Pipeline ready")
-
-    # 1.5 Index the vault
-    print("\n1.5️⃣  Indexing Vault...")
-    all_note_paths = await rag_pipeline.obsidian.list_notes()
-    if not all_note_paths:
-        print("   ⚠ No notes found to index.")
-    else:
-        note_tasks = [rag_pipeline.obsidian.get_note(path) for path in all_note_paths]
-        all_notes = await asyncio.gather(*note_tasks)
-        valid_notes = [note for note in all_notes if note]
-        await rag_pipeline.vector.add_documents(valid_notes)
-        print(f"   ✓ Indexed {len(valid_notes)} notes.")
 
     # 2. Initialize LLM Client
     print("\n2️⃣  Initializing LLM Client...")
     if use_real_llm:
-        llm_client = OllamaClient(model="llama3.1:8b")
-        print("   ✓ Using Ollama (llama3.1:8b)")
+        # Prefer configuring model via environment variable; Ollama client reads LLM_MODEL
+        os.environ.setdefault("LLM_MODEL", "llama3.1:8b")
+        llm_client = OllamaClient()
+        print("   ✓ Using Ollama (model via LLM_MODEL env var)")
     else:
         llm_client = MockLLMClient()
         print("   ✓ Using Mock LLM (for testing)")
@@ -76,16 +67,12 @@ async def setup_rag_system(vault_path: str, use_real_llm: bool = False):
     print("\n3️⃣  Creating RAG-Enabled Agents...")
 
     researcher = RAGAgentFactory.create_researcher_with_rag(
-        rag_pipeline=rag_pipeline,
-        llm_client=llm_client,
-        prompt_loader=prompt_loader
+        rag_pipeline=rag_pipeline, llm_client=llm_client, prompt_loader=prompt_loader
     )
     print("   ✓ RAG_Researcher (full retrieval strategy)")
 
     synthesizer = RAGAgentFactory.create_synthesizer_with_rag(
-        rag_pipeline=rag_pipeline,
-        llm_client=llm_client,
-        prompt_loader=prompt_loader
+        rag_pipeline=rag_pipeline, llm_client=llm_client, prompt_loader=prompt_loader
     )
     print("   ✓ RAG_Synthesizer (graph expansion strategy)")
 
@@ -94,7 +81,7 @@ async def setup_rag_system(vault_path: str, use_real_llm: bool = False):
         expertise="Python programming",
         rag_pipeline=rag_pipeline,
         llm_client=llm_client,
-        prompt_loader=prompt_loader
+        prompt_loader=prompt_loader,
     )
     print("   ✓ PythonExpert (hybrid search strategy)")
 
@@ -117,11 +104,15 @@ async def setup_rag_system(vault_path: str, use_real_llm: bool = False):
     print("\n" + "=" * 60)
     print("✅ RAG System Ready!\n")
 
-    return rag_pipeline, orchestrator, {
-        "researcher": researcher,
-        "synthesizer": synthesizer,
-        "specialist": specialist
-    }
+    return (
+        rag_pipeline,
+        orchestrator,
+        {
+            "researcher": researcher,
+            "synthesizer": synthesizer,
+            "specialist": specialist,
+        },
+    )
 
 
 async def demo_basic_rag_query(rag_pipeline, agents):
@@ -139,7 +130,7 @@ async def demo_basic_rag_query(rag_pipeline, agents):
     # Create query task
     task = AgentTask(
         instruction="What are the main concepts in my notes about clean architecture?",
-        context=""  # Empty - will be filled by RAG
+        context="",  # Empty - will be filled by RAG
     )
 
     print(f"\n📝 Query: {task.instruction}")
@@ -183,7 +174,7 @@ async def demo_multi_agent_rag_pipeline(orchestrator):
     # Execute sequential pipeline
     results = await orchestrator.execute_sequence(
         agent_names=["RAG_Researcher", "RAG_Synthesizer", "PythonExpert"],
-        task_instruction=query
+        task_instruction=query,
     )
 
     # Display each agent's contribution
@@ -220,10 +211,7 @@ async def demo_graph_rag_exploration(rag_pipeline):
     for strategy in strategies:
         print(f"   Strategy: {strategy.upper()}")
 
-        result = await rag_pipeline.augmented_query(
-            query=query,
-            strategy=strategy
-        )
+        result = await rag_pipeline.augmented_query(query=query, strategy=strategy)
 
         metrics = result["metrics"]
         print(f"   - Documents: {metrics['num_documents']}")
@@ -268,7 +256,9 @@ async def demo_toon_optimization(rag_pipeline):
     print(f"   - JSON tokens: {json_tokens}")
     print(f"   - TOON tokens: {toon_tokens}")
     print(f"   - Savings: {savings:.1f}%")
-    print(f"   - Bytes saved: {len(result_json['context']) - len(result_toon['context'])}")
+    print(
+        f"   - Bytes saved: {len(result_json['context']) - len(result_toon['context'])}"
+    )
 
     print("\n   💡 TOON reduces token usage by 30-60% for structured data!")
 
@@ -316,27 +306,19 @@ async def main():
     """Run complete demo"""
 
     # Parse arguments
-    parser = argparse.ArgumentParser(
-        description="Complete RAG System Demo"
+    parser = argparse.ArgumentParser(description="Complete RAG System Demo")
+    parser.add_argument(
+        "--vault", type=str, default="./test_vault", help="Path to Obsidian vault"
     )
     parser.add_argument(
-        "--vault",
-        type=str,
-        default="./test_vault",
-        help="Path to Obsidian vault"
-    )
-    parser.add_argument(
-        "--use-ollama",
-        action="store_true",
-        help="Use real Ollama instead of mock"
+        "--use-ollama", action="store_true", help="Use real Ollama instead of mock"
     )
 
     args = parser.parse_args()
 
     # Setup system
     rag_pipeline, orchestrator, agents = await setup_rag_system(
-        vault_path=args.vault,
-        use_real_llm=args.use_ollama
+        vault_path=args.vault, use_real_llm=args.use_ollama
     )
 
     # Run demos
@@ -352,6 +334,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
 
 

@@ -6,8 +6,107 @@ Navigates Obsidian knowledge graph via wikilinks
 Expands context by following connections
 """
 
-from typing import List, Set, Optional, Dict
-import networkx as nx
+from typing import Any, Dict, List, Optional, Set
+
+# Optional networkx import: provide a small fallback implementation when networkx is not installed.
+try:
+    import networkx as nx  # type: ignore
+
+    NX_AVAILABLE = True
+except Exception:
+    NX_AVAILABLE = False
+
+    class SimpleDiGraph:
+        """Minimal directed graph fallback used when networkx is unavailable."""
+
+        def __init__(self):
+            self._succ = {}
+            self._pred = {}
+
+        def add_node(self, n):
+            self._succ.setdefault(n, {})
+            self._pred.setdefault(n, {})
+
+        def add_edge(self, u, v):
+            self.add_node(u)
+            self.add_node(v)
+            self._succ[u].setdefault(v, True)
+            self._pred[v].setdefault(u, True)
+
+        def predecessors(self, n):
+            return list(self._pred.get(n, {}).keys())
+
+        def successors(self, n):
+            return list(self._succ.get(n, {}).keys())
+
+        def number_of_nodes(self):
+            return len(self._succ)
+
+        def number_of_edges(self):
+            return sum(len(s) for s in self._succ.values())
+
+        def in_degree(self, n):
+            return len(self._pred.get(n, {}))
+
+        def out_degree(self, n):
+            return len(self._succ.get(n, {}))
+
+        def nodes(self):
+            return list(self._succ.keys())
+
+        def __contains__(self, n):
+            return n in self._succ
+
+    def shortest_path(graph, source, target):
+        """Simple BFS-based shortest path."""
+        if source == target:
+            return [source]
+        from collections import deque
+
+        q = deque([source])
+        prev = {source: None}
+        while q:
+            cur = q.popleft()
+            for neigh in graph.successors(cur):
+                if neigh not in prev:
+                    prev[neigh] = cur
+                    if neigh == target:
+                        path = [target]
+                        while prev[path[-1]] is not None:
+                            path.append(prev[path[-1]])
+                        return path[::-1]
+                    q.append(neigh)
+        raise Exception("No path")
+
+    def number_weakly_connected_components(graph):
+        """Compute weakly connected components count treating graph as undirected."""
+        visited = set()
+        comps = 0
+        for n in graph.nodes():
+            if n not in visited:
+                comps += 1
+                stack = [n]
+                while stack:
+                    cur = stack.pop()
+                    if cur in visited:
+                        continue
+                    visited.add(cur)
+                    neighbors = set(graph.successors(cur)) | set(
+                        graph.predecessors(cur)
+                    )
+                    for nb in neighbors:
+                        if nb not in visited:
+                            stack.append(nb)
+        return comps
+
+    import types
+
+    nx = types.SimpleNamespace(
+        DiGraph=SimpleDiGraph,
+        shortest_path=shortest_path,
+        number_weakly_connected_components=number_weakly_connected_components,
+    )
+
 from src.infrastructure.mcp_interface import IGraphMCP, MCPDocument
 from src.infrastructure.obsidian_mcp_client import IObsidianMCP
 
@@ -22,7 +121,8 @@ class GraphNavigator(IGraphMCP):
 
     def __init__(self, obsidian_client: IObsidianMCP):
         self.obsidian = obsidian_client
-        self._graph_cache: Optional[nx.DiGraph] = None
+        # Use Any here so the code can operate with either real networkx graphs or the fallback graph.
+        self._graph_cache: Optional[Any] = None
 
     async def get_linked_notes(self, path: str) -> List[str]:
         """Get outgoing links from note"""
@@ -52,17 +152,17 @@ class GraphNavigator(IGraphMCP):
             await self._build_graph()
 
         graph = self._graph_cache
+        # Defensive: if graph build failed, return empty backlinks
+        if graph is None:
+            return []
+
         if path not in graph:
             return []
 
         # Get predecessors (nodes linking to this one)
         return list(graph.predecessors(path))
 
-    async def expand_context(
-        self,
-        path: str,
-        depth: int = 2
-    ) -> List[MCPDocument]:
+    async def expand_context(self, path: str, depth: int = 2) -> List[MCPDocument]:
         """
         Expand context by following wikilinks
 
@@ -123,11 +223,7 @@ class GraphNavigator(IGraphMCP):
 
         return expanded_docs
 
-    async def find_path(
-        self,
-        start: str,
-        end: str
-    ) -> Optional[List[str]]:
+    async def find_path(self, start: str, end: str) -> Optional[List[str]]:
         """
         Find connection path between two notes
 
@@ -137,11 +233,17 @@ class GraphNavigator(IGraphMCP):
             await self._build_graph()
 
         graph = self._graph_cache
+        # If graph is still None after attempting build, return no path
+        if graph is None:
+            return None
 
         try:
+            # graph is now guaranteed to be non-None
             path = nx.shortest_path(graph, start, end)
             return path
-        except (nx.NodeNotFound, nx.NetworkXNoPath):
+        except Exception:
+            # NetworkX raises specific exceptions (NodeNotFound, NetworkXNoPath).
+            # Our fallback raises a generic Exception when no path exists, so catch broadly.
             return None
 
     async def _build_graph(self) -> None:
@@ -183,16 +285,34 @@ class GraphNavigator(IGraphMCP):
             await self._build_graph()
 
         graph = self._graph_cache
+        if graph is None:
+            # Return a safe default when graph is unavailable
+            return {
+                "total_notes": 0,
+                "total_links": 0,
+                "avg_out_degree": 0,
+                "avg_in_degree": 0,
+                "connected_components": 0,
+            }
+
+        total_nodes = graph.number_of_nodes()
+        total_links = graph.number_of_edges()
+        avg_out = (
+            sum(graph.out_degree(n) for n in graph.nodes()) / total_nodes
+            if total_nodes > 0
+            else 0
+        )
+        avg_in = (
+            sum(graph.in_degree(n) for n in graph.nodes()) / total_nodes
+            if total_nodes > 0
+            else 0
+        )
 
         return {
-            "total_notes": graph.number_of_nodes(),
-            "total_links": graph.number_of_edges(),
-            "avg_out_degree": sum(
-                graph.out_degree(n) for n in graph.nodes()
-            ) / graph.number_of_nodes() if graph.number_of_nodes() > 0 else 0,
-            "avg_in_degree": sum(
-                graph.in_degree(n) for n in graph.nodes()
-            ) / graph.number_of_nodes() if graph.number_of_nodes() > 0 else 0,
+            "total_notes": total_nodes,
+            "total_links": total_links,
+            "avg_out_degree": avg_out,
+            "avg_in_degree": avg_in,
             "connected_components": nx.number_weakly_connected_components(graph),
         }
 
@@ -206,26 +326,21 @@ class GraphNavigator(IGraphMCP):
             await self._build_graph()
 
         graph = self._graph_cache
+        if graph is None:
+            return []
 
         # Calculate total degree (in + out)
-        degrees = {
-            node: graph.in_degree(node) + graph.out_degree(node)
-            for node in graph.nodes()
-        }
+        degrees = {}
+        for node in graph.nodes():
+            degrees[node] = graph.in_degree(node) + graph.out_degree(node)
 
         # Sort by degree
-        sorted_nodes = sorted(
-            degrees.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )
+        sorted_nodes = sorted(degrees.items(), key=lambda x: x[1], reverse=True)
 
         return sorted_nodes[:top_k]
 
     async def find_related_notes(
-        self,
-        path: str,
-        similarity_threshold: int = 2
+        self, path: str, similarity_threshold: int = 2
     ) -> List[str]:
         """
         Find notes related to given note
@@ -237,8 +352,8 @@ class GraphNavigator(IGraphMCP):
             await self._build_graph()
 
         graph = self._graph_cache
-
-        if path not in graph:
+        # Defensive: ensure graph exists and the path is present
+        if graph is None or path not in graph:
             return []
 
         # Get neighbors of target note

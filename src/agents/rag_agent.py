@@ -8,12 +8,13 @@ Extends BaseAgent with:
 - Source citation
 """
 
-from typing import Optional
-from src.agents.concrete_agent import BaseAgent, AgentConfig
-from src.infrastructure.llm_client import ILLMClient
-from src.infrastructure.prompt_manager import IPromptLoader, PromptBuilder
-from src.domain.agent_interface import AgentTask, AgentResponse
+from typing import List, Optional
+
+from src.agents.concrete_agent import AgentConfig, BaseAgent
 from src.application.rag_pipeline import RAGPipeline
+from src.domain.agent_interface import AgentResponse, AgentTask
+from src.infrastructure.llm_client import ILLMClient
+from src.infrastructure.prompt_manager import IPromptLoader
 
 
 class RAGAgent(BaseAgent):
@@ -34,7 +35,7 @@ class RAGAgent(BaseAgent):
         llm_client: ILLMClient,
         prompt_loader: IPromptLoader,
         rag_pipeline: Optional[RAGPipeline] = None,
-        rag_strategy: str = "hybrid"
+        rag_strategy: str = "hybrid",
     ):
         """
         Initialize RAG-enabled agent
@@ -46,7 +47,12 @@ class RAGAgent(BaseAgent):
             rag_pipeline: Optional RAG pipeline (for knowledge retrieval)
             rag_strategy: "vector", "keyword", "hybrid", "graph", "full"
         """
-        super().__init__(config, llm_client, prompt_loader)
+        # Load system prompt text using the loader and pass to BaseAgent
+        system_prompt_text = prompt_loader.load(config.role) if prompt_loader else ""
+        super().__init__(config, llm_client, system_prompt_text)
+
+        # keep the loader around if needed
+        self.prompt_loader = prompt_loader
         self.rag_pipeline = rag_pipeline
         self.rag_strategy = rag_strategy
         self._rag_enabled = rag_pipeline is not None
@@ -96,9 +102,18 @@ class RAGAgent(BaseAgent):
         instruction_lower = task.instruction.lower()
 
         rag_keywords = [
-            "what", "how", "why", "explain", "describe",
-            "find", "search", "research", "information",
-            "according to", "in my notes", "from vault"
+            "what",
+            "how",
+            "why",
+            "explain",
+            "describe",
+            "find",
+            "search",
+            "research",
+            "information",
+            "according to",
+            "in my notes",
+            "from vault",
         ]
 
         return any(keyword in instruction_lower for keyword in rag_keywords)
@@ -113,46 +128,62 @@ class RAGAgent(BaseAgent):
         3. Generate response
         4. Extract citations
         """
+        # Ensure pipeline is configured
+        if self.rag_pipeline is None:
+            raise RuntimeError("RAG pipeline is not configured for this agent")
 
         # 1. Retrieve context
         rag_result = await self.rag_pipeline.augmented_query(
-            query=task.instruction,
-            strategy=self.rag_strategy
+            query=task.instruction, strategy=self.rag_strategy
         )
 
-        context = rag_result["context"]
-        documents = rag_result["documents"]
+        context = rag_result.get("context", "")
+        documents = rag_result.get("documents", [])
 
         # 2. Build enhanced prompt
         enhanced_task = AgentTask(
             instruction=task.instruction,
             context=context,
-            previous_results=task.previous_results
+            previous_results=task.previous_results,
         )
 
-        prompt = self._build_enhanced_prompt(enhanced_task, rag_result["metrics"])
+        prompt = self._build_enhanced_prompt(
+            enhanced_task, rag_result.get("metrics", {})
+        )
 
         # 3. Generate response
-        response_text = await self._llm.generate(
-            prompt,
-            self._config.temperature
-        )
+        response_text = await self._llm.generate(prompt, self._config.temperature)
 
         # 4. Extract citations and create response
-        sources = [doc.path for doc in documents]
+        sources = [getattr(doc, "path", "") for doc in documents]
 
         return AgentResponse(
-            content=response_text,
-            confidence=self._calculate_confidence(rag_result["metrics"]),
             agent_name=self.name,
-            sources=sources
+            content=response_text,
+            confidence=self._calculate_confidence(rag_result.get("metrics", {})),
+            sources=sources,
         )
 
-    def _build_enhanced_prompt(
-        self,
-        task: AgentTask,
-        metrics: dict
-    ) -> str:
+    def _format_previous_results(self, previous_results: List[AgentResponse]) -> str:
+        """Format previous agent outputs for inclusion in prompts"""
+        if not previous_results:
+            return ""
+
+        entries = []
+        for pr in previous_results:
+            conf = (
+                f"{pr.confidence:.2f}"
+                if isinstance(pr.confidence, (int, float))
+                else "N/A"
+            )
+            srcs = ", ".join(pr.sources) if pr.sources else "None"
+            entries.append(
+                f"{pr.agent_name} (confidence: {conf})\nSources: {srcs}\n{pr.content}"
+            )
+
+        return "\n\n---\n\n".join(entries)
+
+    def _build_enhanced_prompt(self, task: AgentTask, metrics: dict) -> str:
         """
         Build prompt with RAG context
 
@@ -167,7 +198,7 @@ class RAGAgent(BaseAgent):
         previous = self._format_previous_results(task.previous_results)
 
         # Enhanced system prompt for RAG
-        rag_system_prompt = f"""{self._system_prompt}
+        rag_system_prompt = f"""{self.system_prompt}
 
 IMPORTANT INSTRUCTIONS FOR USING CONTEXT:
 - You have access to relevant documents from the knowledge base
@@ -177,9 +208,9 @@ IMPORTANT INSTRUCTIONS FOR USING CONTEXT:
 - Be precise and factual
 
 Context Statistics:
-- Documents retrieved: {metrics['num_documents']}
-- Average relevance: {metrics['avg_score']:.2f}
-- Context format: {"TOON (optimized)" if metrics['using_toon'] else "Standard"}
+- Documents retrieved: {metrics.get("num_documents", 0)}
+- Average relevance: {metrics.get("avg_score", 0.0):.2f}
+- Context format: {"TOON (optimized)" if metrics.get("using_toon") else "Standard"}
 """
 
         # Build complete prompt
@@ -206,8 +237,8 @@ Context Statistics:
         - Good context coverage
         """
 
-        num_docs = metrics['num_documents']
-        avg_score = metrics['avg_score']
+        num_docs = metrics.get("num_documents", 0)
+        avg_score = metrics.get("avg_score", 0.0)
 
         # Base confidence on retrieval quality
         if num_docs == 0:
@@ -237,29 +268,23 @@ class RAGAgentFactory:
         llm_client: ILLMClient,
         prompt_loader: IPromptLoader,
         rag_strategy: str = "hybrid",
-        temperature: float = 0.7
+        temperature: float = 0.7,
     ) -> RAGAgent:
         """Create RAG-enabled agent with custom config"""
 
-        config = AgentConfig(
-            name=name,
-            role=role,
-            temperature=temperature
-        )
+        config = AgentConfig(name=name, role=role, temperature=temperature)
 
         return RAGAgent(
             config=config,
             llm_client=llm_client,
             prompt_loader=prompt_loader,
             rag_pipeline=rag_pipeline,
-            rag_strategy=rag_strategy
+            rag_strategy=rag_strategy,
         )
 
     @staticmethod
     def create_researcher_with_rag(
-        rag_pipeline: RAGPipeline,
-        llm_client: ILLMClient,
-        prompt_loader: IPromptLoader
+        rag_pipeline: RAGPipeline, llm_client: ILLMClient, prompt_loader: IPromptLoader
     ) -> RAGAgent:
         """Create research agent with RAG"""
 
@@ -270,14 +295,12 @@ class RAGAgentFactory:
             llm_client=llm_client,
             prompt_loader=prompt_loader,
             rag_strategy="full",  # Use comprehensive retrieval
-            temperature=0.4
+            temperature=0.4,
         )
 
     @staticmethod
     def create_synthesizer_with_rag(
-        rag_pipeline: RAGPipeline,
-        llm_client: ILLMClient,
-        prompt_loader: IPromptLoader
+        rag_pipeline: RAGPipeline, llm_client: ILLMClient, prompt_loader: IPromptLoader
     ) -> RAGAgent:
         """Create synthesis agent with RAG"""
 
@@ -288,7 +311,7 @@ class RAGAgentFactory:
             llm_client=llm_client,
             prompt_loader=prompt_loader,
             rag_strategy="graph",  # Use graph expansion for synthesis
-            temperature=0.6
+            temperature=0.6,
         )
 
     @staticmethod
@@ -297,7 +320,7 @@ class RAGAgentFactory:
         expertise: str,
         rag_pipeline: RAGPipeline,
         llm_client: ILLMClient,
-        prompt_loader: IPromptLoader
+        prompt_loader: IPromptLoader,
     ) -> RAGAgent:
         """Create domain specialist with RAG"""
 
@@ -308,5 +331,5 @@ class RAGAgentFactory:
             llm_client=llm_client,
             prompt_loader=prompt_loader,
             rag_strategy="hybrid",
-            temperature=0.5
+            temperature=0.5,
         )
