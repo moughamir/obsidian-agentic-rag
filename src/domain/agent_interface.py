@@ -1,59 +1,31 @@
-"""
-Step 1: Core Abstractions
-Clean Architecture - Domain Layer (Interfaces)
-Single Responsibility: Define contracts only
-"""
-
+# src/domain/agent_interface.py
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-
+from dataclasses import dataclass, field
+from typing import List, Any
 
 @dataclass
 class AgentResponse:
-    """Value Object - Immutable agent response"""
-
-    content: str
-    confidence: float
+    """Data class for a response from an agent."""
     agent_name: str
-    sources: list[str] | None = None
-
-    def __post_init__(self):
-        if self.sources is None:
-            self.sources = []
-
+    content: str
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class AgentTask:
-    """Value Object - Represents a task for an agent"""
-
+    """Data class for a task to be processed by an agent."""
     instruction: str
     context: str = ""
-    previous_results: list[AgentResponse] | None = None
-
-    def __post_init__(self):
-        if self.previous_results is None:
-            self.previous_results = []
-
+    previous_results: List[AgentResponse] = field(default_factory=list)
 
 class IAgent(ABC):
-    """
-    Interface Segregation Principle: Minimal interface
-    Agents only need to process tasks
-    """
-
-    @abstractmethod
-    async def process(self, task: AgentTask) -> AgentResponse:
-        """Process a task and return response"""
-        pass
-
+    """Abstract interface for an agent."""
     @property
     @abstractmethod
     def name(self) -> str:
-        """Agent identifier"""
+        """The name of the agent."""
         pass
 
-    @property
     @abstractmethod
-    def role(self) -> str:
-        """Agent role/expertise"""
+    async def process(self, task: AgentTask) -> AgentResponse:
+        """Processes a given task and returns a response."""
         pass
