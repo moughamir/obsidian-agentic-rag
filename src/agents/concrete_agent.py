@@ -1,48 +1,38 @@
-"""
-Step 4: Concrete Agent Implementation
-Dependency Injection: Constructor injection of dependencies
-Single Responsibility: Execute tasks using injected services
-Open/Closed: Easily extend by creating new agent types
-"""
-
+# src/agents/concrete_agent.py
 from dataclasses import dataclass
 
 from src.domain.agent_interface import AgentResponse, AgentTask, IAgent
 from src.infrastructure.llm_client import ILLMClient
-from src.infrastructure.prompt_manager import IPromptLoader, PromptBuilder
 
 
 @dataclass
 class AgentConfig:
-    """Configuration value object"""
+    """Configuration for a concrete agent."""
 
     name: str
     role: str
-    temperature: float = 0.7
-    model: str = "llama3.1:8b"
+    temperature: float
 
 
 class BaseAgent(IAgent):
-    """
-    Concrete Agent Implementation
-
-    Dependencies injected via constructor (DI):
-    - LLM client (abstraction)
-    - Prompt loader (abstraction)
-    - Configuration (value object)
-    """
+    """A concrete implementation of the IAgent interface."""
 
     def __init__(
-        self, config: AgentConfig, llm_client: ILLMClient, prompt_loader: IPromptLoader
+        self, config: AgentConfig, llm_client: ILLMClient, system_prompt: str = ""
     ):
-        """
-        Dependency Injection: All dependencies provided externally
-        Testable: Can inject mocks for testing
-        """
         self._config = config
         self._llm = llm_client
-        self._prompt_loader = prompt_loader
-        self._system_prompt = prompt_loader.load(config.role)
+        # Accept either a prompt string or a prompt loader with `.load(role)` for flexibility.
+        # This makes BaseAgent resilient to callers that accidentally pass a loader object.
+        if hasattr(system_prompt, "load") and callable(system_prompt.load):
+            try:
+                # If a prompt loader (e.g., FilePromptLoader) was passed, load the prompt for this role
+                self._system_prompt = system_prompt.load(config.role)
+            except Exception:
+                # Fall back to empty prompt if loader fails
+                self._system_prompt = ""
+        else:
+            self._system_prompt = system_prompt or ""
 
     @property
     def name(self) -> str:
@@ -52,43 +42,24 @@ class BaseAgent(IAgent):
     def role(self) -> str:
         return self._config.role
 
+    @property
+    def system_prompt(self) -> str:
+        """System prompt text used when formatting prompts."""
+        return getattr(self, "_system_prompt", "")
+
     async def process(self, task: AgentTask) -> AgentResponse:
         """
-        Single Responsibility: Process task through LLM
-        KISS: Simple sequential steps
+        Formats a prompt and uses the LLM client to generate a response.
         """
-        # 1. Build prompt
-        prompt = self._build_prompt(task)
-
-        # 2. Call LLM
-        response_text = await self._llm.generate(prompt, self._config.temperature)
-
-        # 3. Create response object
-        return AgentResponse(
-            content=response_text,
-            confidence=0.85,  # TODO: Extract from LLM if available
-            agent_name=self.name,
-            sources=[],  # TODO: Extract citations
+        # Simple prompt formatting
+        full_prompt = (
+            f"SYSTEM: {self.system_prompt}\n\n"
+            f"CONTEXT: {task.context}\n\n"
+            f"INSTRUCTION: {task.instruction}"
         )
 
-    def _build_prompt(self, task: AgentTask) -> str:
-        """Private helper - KISS principle"""
-        previous = self._format_previous_results(task.previous_results)
-
-        return PromptBuilder.build(
-            system_prompt=self._system_prompt,
-            task=task.instruction,
-            context=task.context,
-            previous=previous,
+        raw_response = await self._llm.generate(
+            prompt=full_prompt, temperature=self._config.temperature
         )
 
-    def _format_previous_results(self, results: list[AgentResponse]) -> str:
-        """Format previous agent results for context"""
-        if not results:
-            return ""
-
-        formatted = []
-        for i, result in enumerate(results, 1):
-            formatted.append(f"[{result.agent_name}]: {result.content}")
-
-        return "\n\n".join(formatted)
+        return AgentResponse(agent_name=self.name, content=raw_response)

@@ -1,60 +1,51 @@
-"""
-Step 3: LLM Integration
-Dependency Inversion: Depend on ILLMClient abstraction, not concrete Ollama
-Single Responsibility: Only handle LLM communication
-"""
-
-from abc import ABC, abstractmethod
-from typing import Optional
-
 import httpx
-
+from abc import ABC, abstractmethod
+import os
 
 class ILLMClient(ABC):
-    """Abstraction for LLM providers (Ollama, OpenAI, etc.)"""
-
     @abstractmethod
     async def generate(self, prompt: str, temperature: float = 0.7) -> str:
-        """Generate response from LLM"""
         pass
 
-
 class OllamaClient(ILLMClient):
-    """
-    Concrete implementation for Ollama
-    Single Responsibility: Ollama API communication only
-    """
-
-    def __init__(
-        self, model: str = "llama3.1:8b", base_url: str = "http://localhost:11434"
-    ):
-        self.model = model
+    def __init__(self, base_url: str = "http://localhost:11434"):
+        self.client = httpx.AsyncClient(timeout=60.0)
         self.base_url = base_url
 
     async def generate(self, prompt: str, temperature: float = 0.7) -> str:
-        """
-        KISS: Simple HTTP call to Ollama
-        """
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "temperature": temperature,
-                    "stream": False,
-                },
-            )
-            response.raise_for_status()
-            return response.json()["response"]
+        # Check for model override in env
+        model = os.getenv("LLM_MODEL", "llama3.1:8b")
 
+        response = await self.client.post(
+            f"{self.base_url}/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": temperature}
+            }
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data.get("response", "")
 
 class MockLLMClient(ILLMClient):
-    """Mock for testing - no external dependencies"""
-
+    """
+    Mock LLM for Phase 1 testing.
+    Returns a deterministic echo of the prompt to verify pipeline flow.
+    """
     async def generate(self, prompt: str, temperature: float = 0.7) -> str:
-        """Return mock response for testing"""
-        import asyncio
+        # Extract a snippet of the prompt for the mock response
+        lines = prompt.split('\n\n')
+        system_prompt = next((l for l in lines if l.startswith("SYSTEM:")), "SYSTEM: No System Prompt Found")
+        instruction_section = next((l for l in lines if l.startswith("INSTRUCTION:")), "INSTRUCTION: No Instruction Found")
+        instruction_text = instruction_section.replace("INSTRUCTION:", "").strip()
 
-        await asyncio.sleep(0.1)  # Simulate latency
-        return f"Mock response for: {prompt[:50]}..."
+        response = (
+            f"[MOCK LLM RESPONSE]\n"
+            f"Temperature: {temperature}\n"
+            f"System Role: {system_prompt.replace('SYSTEM:', '').strip()}\n"
+            f"Instruction: {instruction_text[:100]}...\n"
+            f"Action: Processing task as mock agent."
+        )
+        return response

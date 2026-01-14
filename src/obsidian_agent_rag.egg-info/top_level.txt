@@ -1,5 +1,7 @@
 __init__
 agents
 application
+config
 domain
 infrastructure
+mcp
